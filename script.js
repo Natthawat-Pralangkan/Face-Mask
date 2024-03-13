@@ -1,3 +1,5 @@
+
+
 const video = document.getElementById("video");
 
 Promise.all([
@@ -21,7 +23,7 @@ function startVideo() {
     })
     .catch(err => console.error(err));
 }
-
+let intervalId = null; // ประกาศตัวแปร intervalId ให้เป็น null เพื่อให้สามารถเข้าถึงได้ทั่วไป
 
 video.addEventListener("play", () => {
   const canvas = faceapi.createCanvasFromMedia(video);
@@ -29,12 +31,15 @@ video.addEventListener("play", () => {
   const displaySize = { width: video.width, height: video.height };
   faceapi.matchDimensions(canvas, displaySize);
 
-  setInterval(async () => {
+  let intervalId = setInterval(async () => {
     const detections = await faceapi
       .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
       .withFaceLandmarks()
       .withFaceExpressions();
-    if (detections.length > 0) { // ตรวจสอบว่าจับใบหน้าได้หรือไม่
+
+    if (detections.length > 0) {
+      clearInterval(intervalId); // หยุดการเรียกฟังก์ชันที่เรียกใช้งานโดย setInterval
+
       const resizedDetections = faceapi.resizeResults(detections, displaySize);
       canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
       faceapi.draw.drawDetections(canvas, resizedDetections);
@@ -44,19 +49,30 @@ video.addEventListener("play", () => {
       // Capture the canvas as an image
       canvas.toBlob((blob) => {
         const formData = new FormData();
-        formData.append("imageFile", blob, "snapshot.png"); // ส่งไฟล์ภาพไปยังเซิร์ฟเวอร์
+        formData.append("function", "insertimage_detec");
+        formData.append("imageFile", blob, "snapshot.png");
 
-        // ทำการ fetch ไปยังเซิร์ฟเวอร์เมื่อจับใบหน้าได้สำเร็จ
-        fetch("./saveFaceData.php", {
+        fetch("http://localhost/Face-Mask/saveFaceData.php", {
           method: "POST",
           body: formData,
         })
           .then(response => response.json())
-          .then(result => console.log("Server response:", result))
-          .catch(error => console.error("Error:", error));
+
+          .then(result => {
+            console.log(result.status);
+            if (result.status === 200) {
+              alert('124')
+            } else {
+              alert("e")
+            }
+          })
+          // alert("es")
+          .catch(err => alert(err))
+
       }, "image/png");
     }
-  }, 300); // ตั้งค่า interval ตามความต้องการ
+  }, 100); // ตั้งค่า interval ตามความต้องการ
 });
+
 
 

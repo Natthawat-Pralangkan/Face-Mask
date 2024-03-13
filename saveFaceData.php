@@ -2,52 +2,64 @@
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: POST");
 header("Access-Control-Allow-Headers: Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With, access");
-include "./servers/connect.php";
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // First, check for and handle an uploaded file
-    if (isset($_FILES['imageFile'])) {
-        // The path where the file will be saved
-        $targetDirectory = "imgage/"; // Ensure this directory exists and is writable
-        $targetFile = $targetDirectory . basename($_FILES['imageFile']['name']);
-        $uploadOk = 1;
-        $imageFileType = strtolower(pathinfo($targetFile, PATHINFO_EXTENSION));
+include "./connenct.php"; // แก้ไขชื่อไฟล์ตามชื่อที่เป็นไปตามความเหมาะสม
 
-        // Attempt to move the uploaded file to the target directory
-        if (move_uploaded_file($_FILES['imageFile']['tmp_name'], $targetFile)) {
-            echo "The file " . htmlspecialchars(basename($_FILES['imageFile']['name'])) . " has been uploaded.";
+if (isset($_POST['function']) && $_POST['function'] == "insertimage_detec") {
 
-            // After successful upload, you can also insert the file path into the database here if needed
-            // $sql = "INSERT INTO face_recognition_data (image_path) VALUES (:image_path)";
-            // $stmt = $db->prepare($sql);
-            // $stmt->bindParam(':image_path', $targetFile); // Use $targetFile which contains the path
-            // $stmt->execute();
-
+    $success_check_flag = false;
+    try {
+        if (isset($_FILES['imageFile']) && $_FILES['imageFile']['error'] === UPLOAD_ERR_OK) {
+            $tmp = $_FILES['imageFile']['tmp_name'];
+            $name = $_FILES['imageFile']['name'];
+            $path = "images/" . $name;
+            move_uploaded_file($tmp, $path);
         } else {
-            echo "Sorry, there was an error uploading your file.";
+            $name = "";
         }
-    } else {
-        echo "No file was uploaded.";
-    }
 
-    // Then, handle other POST data, like 'image_path'
-    if (isset($_POST['image_path'])) {
-        // Your existing code to handle 'image_path'
-        echo "Image path received: " . $_POST['image_path'];
+        // เปิดไฟล์รูปภาพของ snapshot ด้วย imagecreatefrompng()
+        $snapshot_path = "images/snapshot.png";
+        $snapshot = imagecreatefrompng($snapshot_path);
 
-        // Example of inserting face data into the database
-        $sql = "INSERT INTO face_recognition_data (image_path) VALUES (:image_path)";
-        $stmt = $db->prepare($sql);
-        $stmt->bindParam(':image_path', $_POST['image_path']);
+        $getuser = $db->prepare("SELECT * FROM user");
+        $getuser->execute();
+        $rows = $getuser->fetchAll(PDO::FETCH_ASSOC);
 
-        if ($stmt->execute()) {
-            echo json_encode(['status' => 'success']);
-        } else {
-            echo json_encode(['status' => 'error', 'message' => 'Failed to insert data into the database']);
+        foreach ($rows as $row) {
+            // เปรียบเทียบภาพในฐานข้อมูลกับภาพในไฟล์ snapshot.png
+            $user_image_path = "images/" . $row['images'];
+            $user_image = imagecreatefromjpeg($user_image_path);
+
+            // ใช้ imagesx() และ imagesy() เพื่อรับขนาดภาพของภาพที่เปิดไว้
+            $is_matching = true;
+            for ($x = 0; $x < imagesx($snapshot); $x++) {
+                for ($y = 0; $y < imagesy($snapshot); $y++) {
+                    $color_snapshot = imagecolorat($snapshot, $x, $y);
+                    $color_user_image = imagecolorat($user_image, $x, $y);
+
+                    if ($color_snapshot !== $color_user_image) {
+                        $is_matching = false;
+                        break 2; // ออกจากลูปทั้งหมด
+                    }
+                }
+            }
+
+            // หากตรงกัน $is_matching จะเป็น true
+            if ($is_matching) {
+                $check = $db->prepare("INSERT INTO check_detec (user_id) VALUES (?)");
+                if ($check->execute([$row['user_id']])) {
+                    $success_check_flag = true;
+                }
+            } else {
+                // ใช้ error_get_last() เพื่อรับข้อความผิดพลาดล่าสุด
+                echo json_encode(['status' => 400]); // แสดงข้อความผิดพลาดในรูปแบบ JSON
+            }
         }
-    } else {
-        // If handling file uploads only, you might not need this part
-        // echo "Image path is missing in the request";
+        if ($success_check_flag) {
+            echo json_encode(['status' => 200]);
+        }
+    } catch (Exception $e) {
+        echo json_encode(['status' => 400, "msg" => $e->getMessage()]);
     }
 }
-?>
